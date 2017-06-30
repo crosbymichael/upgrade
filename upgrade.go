@@ -86,7 +86,6 @@ func mapProcess(old *rc3.Spec) *specs.Process {
 		Cwd:             old.Process.Cwd,
 		SelinuxLabel:    old.Process.SelinuxLabel,
 		ApparmorProfile: old.Process.ApparmorProfile,
-		// OOMScoreAdj: old.Process.o
 		Capabilities: &specs.LinuxCapabilities{
 			Bounding:    old.Process.Capabilities,
 			Effective:   old.Process.Capabilities,
@@ -107,6 +106,12 @@ func mapProcess(old *rc3.Spec) *specs.Process {
 			Width:  old.Process.ConsoleSize.Width,
 			Height: old.Process.ConsoleSize.Height,
 		}
+	}
+	process.User = specs.User{
+		UID:            old.Process.User.UID,
+		GID:            old.Process.User.GID,
+		Username:       old.Process.User.Username,
+		AdditionalGids: old.Process.User.AdditionalGids,
 	}
 	return process
 }
