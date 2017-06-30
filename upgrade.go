@@ -19,7 +19,7 @@ func UpgradeSpec(dir string) error {
 	if err != nil {
 		return err
 	}
-	spec, err := mapmapSpec(old)
+	spec, err := mapSpec(old)
 	if err != nil {
 		return err
 	}
@@ -44,13 +44,13 @@ func mapSpec(old *rc3.Spec) (*specs.Spec, error) {
 	spec.Version = specs.Version
 	spec.Annotations = old.Annotations
 	for _, h := range old.Hooks.Prestart {
-		spec.Hooks.Prestart = append(spec.Hooks.Prestart, mapmapHook(h))
+		spec.Hooks.Prestart = append(spec.Hooks.Prestart, mapHook(h))
 	}
 	for _, h := range old.Hooks.Poststart {
-		spec.Hooks.Poststart = append(spec.Hooks.Poststart, mapmapHook(h))
+		spec.Hooks.Poststart = append(spec.Hooks.Poststart, mapHook(h))
 	}
 	for _, h := range old.Hooks.Poststop {
-		spec.Hooks.Poststop = append(spec.Hooks.Poststop, mapmapHook(h))
+		spec.Hooks.Poststop = append(spec.Hooks.Poststop, mapHook(h))
 	}
 	spec.Hostname = old.Hostname
 	for _, m := range old.Mounts {
@@ -82,7 +82,7 @@ func mapSpec(old *rc3.Spec) (*specs.Spec, error) {
 		NoNewPrivileges: old.Process.NoNewPrivileges,
 	}
 	for _, r := range old.Process.Rlimits {
-		spec.Process.Rlimits = append(spec.Process.Rlimits, &specs.LinuxRlimit{
+		spec.Process.Rlimits = append(spec.Process.Rlimits, specs.LinuxRlimit{
 			Type: r.Type,
 			Hard: r.Hard,
 			Soft: r.Soft,
