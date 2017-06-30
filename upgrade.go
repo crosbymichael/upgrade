@@ -13,9 +13,26 @@ const (
 	ConfigFilename = "config.json"
 )
 
+// ProcessState holds the process OCI specs along with various fields
+// required by containerd
+type ProcessState struct {
+	specs.Process
+	Exec        bool     `json:"exec"`
+	Stdin       string   `json:"containerdStdin"`
+	Stdout      string   `json:"containerdStdout"`
+	Stderr      string   `json:"containerdStderr"`
+	RuntimeArgs []string `json:"runtimeArgs"`
+	NoPivotRoot bool     `json:"noPivotRoot"`
+
+	Checkpoint string `json:"checkpoint"`
+	RootUID    int    `json:"rootUID"`
+	RootGID    int    `json:"rootGID"`
+}
+
 // UpgradeSpec upgrades a spec from the previous version to the current spec version
 func UpgradeSpec(dir string) error {
-	old, err := readRc3(dir)
+	configPath := filepath.Join(dir, ConfigFilename)
+	old, err := readRc3(configPath)
 	if err != nil {
 		return err
 	}
@@ -23,11 +40,11 @@ func UpgradeSpec(dir string) error {
 	if err != nil {
 		return err
 	}
-	return rewriteJSON(filepath.Join(dir, ConfigFilename), spec)
+	return rewriteJSON(configPath, spec)
 }
 
-func readRc3(dir string) (*rc3.Spec, error) {
-	f, err := os.Open(filepath.Join(dir, ConfigFilename))
+func readRc3(configPath string) (*rc3.Spec, error) {
+	f, err := os.Open(configPath)
 	if err != nil {
 		return nil, err
 	}
@@ -43,6 +60,7 @@ func mapSpec(old *rc3.Spec) (*specs.Spec, error) {
 	var spec specs.Spec
 	spec.Version = specs.Version
 	spec.Annotations = old.Annotations
+	spec.Hooks = new(specs.Hooks)
 	for _, h := range old.Hooks.Prestart {
 		spec.Hooks.Prestart = append(spec.Hooks.Prestart, mapHook(h))
 	}
@@ -65,7 +83,7 @@ func mapSpec(old *rc3.Spec) (*specs.Spec, error) {
 		Path:     old.Root.Path,
 		Readonly: old.Root.Readonly,
 	}
-	spec.Process = mapProcess(old)
+	spec.Process = mapProcess(old.Process)
 	if old.Linux != nil {
 		spec.Linux = mapLinux(old.Linux, spec.Process)
 	}
@@ -78,40 +96,56 @@ func mapSpec(old *rc3.Spec) (*specs.Spec, error) {
 	return &spec, nil
 }
 
-func mapProcess(old *rc3.Spec) *specs.Process {
-	process := &specs.Process{
-		Terminal:        old.Process.Terminal,
-		Args:            old.Process.Args,
-		Env:             old.Process.Env,
-		Cwd:             old.Process.Cwd,
-		SelinuxLabel:    old.Process.SelinuxLabel,
-		ApparmorProfile: old.Process.ApparmorProfile,
-		Capabilities: &specs.LinuxCapabilities{
-			Bounding:    old.Process.Capabilities,
-			Effective:   old.Process.Capabilities,
-			Inheritable: old.Process.Capabilities,
-			Permitted:   old.Process.Capabilities,
-		},
-		NoNewPrivileges: old.Process.NoNewPrivileges,
+func mapProcessState(old rc3.ProcessState) ProcessState {
+	return ProcessState{
+		Process:     *mapProcess(old.Process),
+		Exec:        old.Exec,
+		Stdin:       old.Stdin,
+		Stdout:      old.Stdout,
+		Stderr:      old.Stderr,
+		RuntimeArgs: old.RuntimeArgs,
+		NoPivotRoot: old.NoPivotRoot,
+
+		Checkpoint: old.Checkpoint,
+		RootUID:    old.RootUID,
+		RootGID:    old.RootGID,
 	}
-	for _, r := range old.Process.Rlimits {
+}
+
+func mapProcess(old rc3.Process) *specs.Process {
+	process := &specs.Process{
+		Terminal:        old.Terminal,
+		Args:            old.Args,
+		Env:             old.Env,
+		Cwd:             old.Cwd,
+		SelinuxLabel:    old.SelinuxLabel,
+		ApparmorProfile: old.ApparmorProfile,
+		Capabilities: &specs.LinuxCapabilities{
+			Bounding:    old.Capabilities,
+			Effective:   old.Capabilities,
+			Inheritable: old.Capabilities,
+			Permitted:   old.Capabilities,
+		},
+		NoNewPrivileges: old.NoNewPrivileges,
+	}
+	for _, r := range old.Rlimits {
 		process.Rlimits = append(process.Rlimits, specs.LinuxRlimit{
 			Type: r.Type,
 			Hard: r.Hard,
 			Soft: r.Soft,
 		})
 	}
-	if old.Process.ConsoleSize.Height != 0 || old.Process.ConsoleSize.Width != 0 {
+	if old.ConsoleSize.Height != 0 || old.ConsoleSize.Width != 0 {
 		process.ConsoleSize = &specs.Box{
-			Width:  old.Process.ConsoleSize.Width,
-			Height: old.Process.ConsoleSize.Height,
+			Width:  old.ConsoleSize.Width,
+			Height: old.ConsoleSize.Height,
 		}
 	}
 	process.User = specs.User{
-		UID:            old.Process.User.UID,
-		GID:            old.Process.User.GID,
-		Username:       old.Process.User.Username,
-		AdditionalGids: old.Process.User.AdditionalGids,
+		UID:            old.User.UID,
+		GID:            old.User.GID,
+		Username:       old.User.Username,
+		AdditionalGids: old.User.AdditionalGids,
 	}
 	return process
 }
