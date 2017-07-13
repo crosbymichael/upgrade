@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 )
@@ -32,23 +31,6 @@ func (ls *linuxSyscall) UnmarshalJSON(b []byte) error {
 		t.Name = nil
 	}
 	return nil
-}
-
-// not used in 17.06.1
-type initProcessStartTime uint64
-
-func (i *initProcessStartTime) UnmarshalJSON(b []byte) error {
-	var n uint64
-	err := json.Unmarshal(b, &n)
-	if _, ok := err.(*json.UnmarshalTypeError); ok {
-		var s string
-		if err := json.Unmarshal(b, &s); err != nil {
-			return err
-		}
-		n, err = strconv.ParseUint(s, 10, 64)
-	}
-	*i = initProcessStartTime(n)
-	return err
 }
 
 // TODO: figure out how to omitempty when pointer is nil
