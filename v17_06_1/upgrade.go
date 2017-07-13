@@ -1,50 +1,60 @@
 package v17_06_1
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 )
 
+type file struct {
+	*os.File
+	name string
+	x    interface{}
+	buf  bytes.Buffer
+}
+
 func Upgrade(runcState, containerdConfig, containerdProcess string) error {
-	if err := UpgradeState(runcState); err != nil {
-		return err
+	files := []*file{
+		&file{name: runcState, x: new(State)},
+		&file{name: containerdConfig, x: new(Spec)},
+		&file{name: containerdProcess, x: new(ProcessState)},
 	}
-	if err := UpgradeConfig(containerdConfig); err != nil {
-		return err
+	// error out if any of the files have issues being decoded
+	// before overwriting them, to prevent being in a mixed state.
+	for _, f := range files {
+		fi, err := os.Stat(f.name)
+		if err != nil {
+			return err
+		}
+		f.File, err = os.OpenFile(f.name, os.O_RDWR, fi.Mode())
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if err := json.NewDecoder(f).Decode(f.x); err != nil {
+			return err
+		}
+		if _, err := f.Seek(0, 0); err != nil {
+			return err
+		}
 	}
-	return UpgradeProcessState(containerdProcess)
-}
-
-func UpgradeState(filename string) error {
-	var x State
-	return remarshal(filename, &x)
-}
-
-func UpgradeConfig(filename string) error {
-	var x Spec
-	return remarshal(filename, &x)
-}
-
-func UpgradeProcessState(filename string) error {
-	var x ProcessState
-	return remarshal(filename, &x)
-}
-
-func remarshal(filename string, x interface{}) error {
-	fi, err := os.Stat(filename)
-	if err != nil {
-		return err
+	for _, f := range files {
+		// error out if any of the files have issues being encoded
+		// before overwriting them, to prevent being in a mixed state.
+		if err := json.NewEncoder(&f.buf).Encode(f.x); err != nil {
+			return err
+		}
 	}
-	f, err := os.OpenFile(filename, os.O_RDWR, fi.Mode())
-	if err != nil {
-		return err
+	var errs []string
+	for _, f := range files {
+		if _, err := f.Write(f.buf.Bytes()); err != nil {
+			errs = append(errs, fmt.Sprintf("error writing to %s: %v", f.name, err))
+		}
 	}
-	defer f.Close()
-	if err := json.NewDecoder(f).Decode(x); err != nil {
-		return err
+	if errs != nil {
+		return fmt.Errorf(strings.Join(errs, ", "))
 	}
-	if _, err := f.Seek(0, 0); err != nil {
-		return err
-	}
-	return json.NewEncoder(f).Encode(x)
+	return nil
 }
