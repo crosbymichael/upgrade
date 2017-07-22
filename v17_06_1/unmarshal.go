@@ -45,16 +45,6 @@ func (m memorySwappiness) String() string {
 	return fmt.Sprintf("%d", *m.V)
 }
 
-func (m memorySwappiness) compare(m2 memorySwappiness) int {
-	if m.V == m2.V {
-		return 0
-	}
-	if m.V == nil || *m.V < *m2.V {
-		return -1
-	}
-	return 1
-}
-
 var null = []byte("null")
 
 func (m *memorySwappiness) MarshalJSON() ([]byte, error) {

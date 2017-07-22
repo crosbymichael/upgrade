@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+
+	"github.com/docker/docker/pkg/ioutils"
 )
 
 type file struct {
-	*os.File
 	name string
 	x    interface{}
 	buf  bytes.Buffer
+	w    io.WriteCloser
 }
 
 func Upgrade(runcState, containerdConfig, containerdProcess string) error {
@@ -21,35 +24,35 @@ func Upgrade(runcState, containerdConfig, containerdProcess string) error {
 		&file{name: containerdConfig, x: new(Spec)},
 		&file{name: containerdProcess, x: new(ProcessState)},
 	}
-	// error out if any of the files have issues being decoded
-	// before overwriting them, to prevent being in a mixed state.
 	for _, f := range files {
-		fi, err := os.Stat(f.name)
+		fd, err := os.Open(f.name)
 		if err != nil {
 			return err
 		}
-		f.File, err = os.OpenFile(f.name, os.O_RDWR, fi.Mode())
-		if err != nil {
+		defer fd.Close()
+		// error out if any of the files have issues being decoded
+		// before overwriting them, to prevent being in a mixed state.
+		if err := json.NewDecoder(fd).Decode(f.x); err != nil {
 			return err
 		}
-		defer f.Close()
-		if err := json.NewDecoder(f).Decode(f.x); err != nil {
-			return err
-		}
-		if _, err := f.Seek(0, 0); err != nil {
-			return err
-		}
-	}
-	for _, f := range files {
 		// error out if any of the files have issues being encoded
 		// before overwriting them, to prevent being in a mixed state.
 		if err := json.NewEncoder(&f.buf).Encode(f.x); err != nil {
 			return err
 		}
+		fi, err := fd.Stat()
+		if err != nil {
+			return err
+		}
+		f.w, err = ioutils.NewAtomicFileWriter(f.name, fi.Mode())
+		if err != nil {
+			return err
+		}
+		defer f.w.Close()
 	}
 	var errs []string
 	for _, f := range files {
-		if _, err := f.Write(f.buf.Bytes()); err != nil {
+		if _, err := f.w.Write(f.buf.Bytes()); err != nil {
 			errs = append(errs, fmt.Sprintf("error writing to %s: %v", f.name, err))
 		}
 	}
